@@ -1,13 +1,111 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="de">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dosis-Dings</title>
-<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem}</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dosis-Dings</title>
+  <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-<h1>Dosis-Dings</h1>
-<p>titration and date helper</p>
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-name">Dosis-Dings</span>
+      <span class="brand-tagline">Dreimal täglich weniger Kopfrechnen</span>
+    </div>
+    <nav class="tab-bar" role="tablist" aria-label="Werkzeuge">
+      <button type="button" class="tab" id="tab-titration" role="tab" aria-selected="true" aria-controls="panel-titration">Titrationsplaner</button>
+      <button type="button" class="tab" id="tab-dates" role="tab" aria-selected="false" aria-controls="panel-dates">Datumsrechner</button>
+    </nav>
+  </header>
+
+  <main class="content">
+    <section class="panel" id="panel-titration" role="tabpanel" aria-labelledby="tab-titration">
+      <div class="card" id="start-card">
+        <h2 class="card-title">Startdatum</h2>
+        <div class="start-row" id="start-row"></div>
+        <p class="hint">Schritt 1 startet an diesem Datum. Eigenes Datum einfach eintippen oder im Kalender wählen.</p>
+      </div>
+
+      <div id="meds"></div>
+      <div class="meds-footer">
+        <button type="button" class="btn" id="add-med">
+          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M10 3a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H4a1 1 0 1 1 0-2h5V4a1 1 0 0 1 1-1Z"/></svg>
+          Medikament hinzufügen
+        </button>
+        <span class="hint" id="med-count">1 von 4 Medikamenten</span>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Schritte</h2>
+        <p class="hint">Schritt 1 startet am Startdatum. Der Abstand zählt in Tagen ab dem vorigen Schritt. Datum und Abstand hängen zusammen: Änderst du das Datum, passt sich der Abstand an, und umgekehrt.</p>
+        <div class="table-wrap" id="steps-table"></div>
+        <p class="hint jump-hints" id="jump-hints" hidden></p>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Ausgabe zum Einfügen</h2>
+        <div class="output-actions">
+          <button type="button" class="btn primary" id="copy-output">
+            <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M7 3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h-1v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5V4H7Zm4 0h4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-4v-1h4a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-4V3Z"/></svg>
+            <span id="copy-label">Als Text kopieren</span>
+          </button>
+          <p class="hint" id="output-warning" role="status" hidden></p>
+        </div>
+        <pre class="output" id="output" tabindex="0" title="Klicken zum Kopieren" aria-label="Ausgabe zum Einfügen, klicken zum Kopieren"></pre>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="panel-dates" role="tabpanel" aria-labelledby="tab-dates">
+      <div class="two-col">
+        <div class="card">
+          <h2 class="card-title">Datum plus / minus Zeitraum</h2>
+          <p class="hint">Es zählen Kalendertage, Wochenenden und Feiertage werden nicht übersprungen.</p>
+          <div id="calc-form"></div>
+          <div class="result-box" id="calc-result">
+            <span class="result-label">Ergebnis</span>
+            <div class="result-body">
+              <span class="result-value" id="calc-date">–</span>
+              <span class="result-sub" id="calc-weekday"></span>
+            </div>
+            <button type="button" class="btn" id="calc-copy">Kopieren</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title">Differenz zwischen zwei Daten</h2>
+          <p class="hint">Anzahl der Kalendertage von Datum A bis Datum B.</p>
+          <div id="diff-form"></div>
+          <div class="result-box" id="diff-result">
+            <span class="result-label">Differenz</span>
+            <div class="result-body">
+              <span class="result-value" id="diff-value">–</span>
+              <span class="result-sub" id="diff-sub"></span>
+            </div>
+            <button type="button" class="btn" id="diff-copy">Kopieren</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">Alles läuft lokal im Browser. Es werden keine Daten gespeichert oder übertragen.</footer>
+
+  <div class="toast" id="toast" role="status" hidden>
+    <span id="toast-text"></span>
+    <button type="button" class="btn small" id="toast-undo">Rückgängig</button>
+  </div>
+
+  <div class="modal-overlay" id="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 class="modal-title" id="modal-title">Medikament entfernen?</h2>
+      <p class="modal-text" id="modal-text"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="modal-cancel">Abbrechen</button>
+        <button type="button" class="btn danger" id="modal-confirm">Entfernen</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

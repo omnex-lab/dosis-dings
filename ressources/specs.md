@@ -54,6 +54,8 @@ Two cards side by side (wrap on narrow screens).
 - **Rechenart**: segmented control `+ Addieren` (default) / `− Subtrahieren`.
 - **Anzahl**: integer input, right-aligned, width ~96px, default empty or 0.
 - **Einheit**: select with `Tage`, `Wochen`, `Monate`, `Jahre`.
+- `Wochen` counts **calendar weeks** (Monday is the first day of the week): the result is the Monday `n` ISO weeks after the start date's week. Start date on a Monday: the Monday 7 days later. Example: `02.12.2026` (Mi) + 1 Woche = `07.12.2026` (Mo).
+- **Anzahl**: negative values are invalid (red border, no result). `0` yields the start date itself.
 - **Result box** (tint background): small label "Ergebnis", large date `TT.MM.JJJJ`, weekday name below (e.g. "Sonntag"), and a **Kopieren** button (copies just the date, e.g. `14.02.2027`).
 - Result updates live while typing. Empty or invalid input: show no result (not an error toast).
 - Month/year arithmetic **clamps to the last day of the month** (31.01.2027 + 1 Monat = 28.02.2027; 29.02.2028 + 1 Jahr = 28.02.2029). **[Assumption]**
@@ -62,12 +64,14 @@ Two cards side by side (wrap on narrow screens).
 - Subtext: "Anzahl der Kalendertage von Datum A bis Datum B."
 - Two date fields: **Von** and **Bis**.
 - **Result box**: label "Differenz", large `75 Tage`, small line "entspricht 10 Wochen und 5 Tagen". **Kopieren** copies `75 Tage`.
-- Singular/plural: "1 Tag", "2 Tage", "1 Woche", "2 Wochen". Omit the weeks line when under 7 days.
-- If Bis is before Von, show a negative value (`-75 Tage`) and the line "Bis liegt vor Von". **[Assumption]**
+- Singular/plural: "1 Tag", "2 Tage", "1 Woche", "2 Wochen". Omit the weeks line when under 7 days. The "entspricht … Wochen und … Tagen" line is a plain 7-day conversion of the difference, **not** calendar weeks.
+- If Bis is before Von, show a negative value (`-75 Tage`) and the line "Bis liegt vor Von".
 - The difference is Bis minus Von in calendar days (not inclusive of both ends).
 
 ### 3.3 Date field component (used everywhere)
 Text input accepting `TT.MM.JJJJ` **and** a calendar button that opens the native date picker (`<input type="date">`, visually hidden, triggered via `showPicker()`). Both stay in sync. Accept `D.M.YYYY` without leading zeros and normalize to `DD.MM.YYYY` on blur. Invalid input (e.g. `31.02.2026`) shows a red border and no result. Where noted, a **Heute** button fills in today's date.
+
+Browser support: target is desktop Chrome, Firefox and Safari. If `HTMLInputElement.prototype.showPicker` exists, use the text input + hidden date input as described. If not (Firefox, older Safari), the visible field itself is a native `<input type="date">` (browser locale format) and the separate calendar button is hidden; all other behavior is unchanged.
 
 ## 4. Tab: Titrationsplaner
 
@@ -79,14 +83,14 @@ Layout, top to bottom: Startdatum card, medication cards (+ add button), Schritt
 - Label "Startdatum". Controls in one row: segmented buttons **Morgen** and **Heute**, then a date field (150px) with calendar button, then the weekday abbreviation (Mo, Di, ...).
 - Default value on load: **tomorrow**. The Morgen/Heute segment is highlighted only while the field value equals tomorrow/today; typing another date clears the highlight (custom date).
 - Hint: "Schritt 1 startet an diesem Datum. Eigenes Datum einfach eintippen oder im Kalender wählen."
-- Step 1's date always equals the Startdatum.
+- Step 1's date always equals the Startdatum — including after step 1 was deleted (the new step 1 takes over the current Startdatum). Editing the Startdatum always shifts the whole chain.
 
 ### 4.2 Medications (1 to 4)
 - Page starts with **one** medication card. Title is just "Medikament" while only one exists; with two or more they are titled "Medikament 1" to "Medikament 4".
 - Button **Medikament hinzufügen** (plus icon) below the cards, with a counter "N von 4 Medikamenten". Disabled at 4.
 - Every card has its own **Entfernen** button (trash icon). It is disabled when only one medication remains. Clicking it opens a **confirmation dialog**: title "Medikament entfernen?", text `„<Name>“ und alle eingetragenen Dosen werden aus dem Plan gelöscht.`, buttons **Abbrechen** and **Entfernen** (danger style). Modal, focus trapped, Esc cancels.
 - Card fields:
-  - **Name**: free text. Appears in the output and as group heading above its four columns.
+  - **Name**: free text, **required**. Appears in the output and as group heading above its four columns. Empty name: inline error "Name fehlt", red border, and the output line prints `?` instead of the name.
   - **Eingabe**: segmented control `Dosis` / `Tabletten`.
   - Mode `Dosis`: field **Einheit** (free text, placeholder and default `mg`; an empty field means `mg`). Hint "Leer = mg".
   - Mode `Tabletten`: field **Tablettenstärke** (free text, e.g. `15mg`, placeholder "z. B. 15mg"). Hint "Steht hinter dem Namen". No unit is appended to the numbers.
@@ -107,9 +111,9 @@ Heading "Schritte", subtext: "Schritt 1 startet am Startdatum. Der Abstand zähl
 **Rows**
 - The mockup shows 3 rows of sample data. The real app starts with **one row** and all doses `0`. **[Assumption]**
 - A **plus button (circle, 32px)** sits between rows and below the last row, centered under the Nr. column, with a thin line running across the full width behind it. Clicking it inserts a new row **below** the row above it. **[Assumption]** The new row copies the doses of the row above it and has Abstand `7`.
-- **Delete** (trash icon at the end of each row) removes the row immediately, no confirmation. A toast appears bottom-center for 6 seconds: "Schritt gelöscht" with a **Rückgängig** button that restores the row (including its position and values). The delete button is disabled when only one row remains.
+- **Delete** (trash icon at the end of each row) removes the row immediately, no confirmation. A toast appears bottom-center for 6 seconds: "Schritt gelöscht" with a **Rückgängig** button that restores a **full state snapshot** (steps, doses, Startdatum). A new deletion replaces a pending toast; only the latest deletion is undoable. The delete button is disabled when only one row remains.
 - Inserting or deleting a row **shifts all later dates** (dates are derived from the Abstand chain). This is intended.
-- **Deleting step 1:** the next row becomes step 1, takes over the Startdatum and its Abstand becomes locked.
+- **Deleting step 1:** the next row becomes step 1, its date becomes the Startdatum (Abstand locked, all later dates recompute).
 
 **Date and Abstand behavior**
 - Date of a row = date of the previous row + Abstand days. The date of **step 1 = Startdatum**.
@@ -117,7 +121,7 @@ Heading "Schritte", subtext: "Schritt 1 startet am Startdatum. Der Abstand zähl
 - Editing a row's **Abstand** recalculates its date, and all later dates shift accordingly.
 - Editing a row's **Datum** recalculates its Abstand (date minus previous row's date); later dates shift.
 - **Validation (inline, small red text under the field, red border):**
-  - date earlier than the previous step: "Vor dem vorigen Schritt" (do not apply the change)
+  - date earlier than the previous step: "Vor dem vorigen Schritt" (do not apply the change; the field keeps the typed value with a red border while focused and reverts to the last valid date on blur, so the Abstand is unchanged)
   - Abstand not a non-negative integer: "Abstand ungültig"
   - Abstand `0` is allowed (two steps on the same day).
 - While the user types a partial date, do not rewrite the field; only normalize on blur.
@@ -125,13 +129,14 @@ Heading "Schritte", subtext: "Schritt 1 startet am Startdatum. Der Abstand zähl
 **Dose cells**
 - Accept non-negative decimals with **comma or period** (`0.5` and `0,5` both valid). Store the number; **display and output always use the comma**.
 - Normalize on blur: strip trailing zeros (`0,50` becomes `0,5`, `25,0` becomes `25`), empty becomes `0`.
-- Anything non-numeric: red border, and the output shows a placeholder `?` for that cell until fixed (and Kopieren stays enabled but the user is warned inline). **[Assumption]**
+- Anything non-numeric: red border, and the output shows a placeholder `?` for that cell until fixed. Kopieren stays enabled; the output card shows an inline warning with the count of invalid fields (e.g. "2 Felder ungültig"). Invalid = non-numeric dose cells plus missing medication names (everything that prints `?` in the output).
+- **Magnitude guard:** if a dose is ≥ 10× (or ≤ 1/10×) the previous step's dose for the same medication and time slot (both non-zero), a non-blocking hint appears below the steps table: "Prüfen: Schritt N, <Name> <Slot> – Sprung ≥ 10× zum vorigen Schritt." The value is still printed.
 - Quarter and half tablets are simply `0,25` / `0,5`.
 
 ### 4.4 Output ("Ausgabe zum Einfügen")
-Card with heading and a primary **Als Text kopieren** button (copy icon). The output sits in a light box (`#EEF3F8`, monospace 15px, whitespace preserved). **Clicking anywhere in the output box also copies.** Keep the button too (some people prefer it; it is also the keyboard-accessible path). After copying the button label changes to **Kopiert** for ~1.6 seconds. Use `navigator.clipboard.writeText` with a fallback (hidden textarea + `execCommand('copy')`) for contexts where the Clipboard API is blocked. Tooltip on the box: "Klicken zum Kopieren".
+Card with heading and a primary **Als Text kopieren** button (copy icon). The output sits in a light box. The output box is the **source of truth**: it shows exactly the text that will be copied, including the effective unit (empty Einheit ⇒ `mg`). (`#EEF3F8`, monospace 15px, whitespace preserved). **Clicking anywhere in the output box also copies.** Keep the button too (some people prefer it; it is also the keyboard-accessible path). After copying the button label changes to **Kopiert** for ~1.6 seconds. Use `navigator.clipboard.writeText` with a fallback (hidden textarea + `execCommand('copy')`) for contexts where the Clipboard API is blocked. Tooltip on the box: "Klicken zum Kopieren".
 
-**Format: one block per step date, one line per medication, blank line between blocks:**
+**Format: one block per step date, one line per medication, blank line between blocks.** Consecutive steps on the same date (Abstand 0) merge into a single block (no duplicated `ab …:` header).
 
 ```
 ab 02.12.2026:
@@ -167,14 +172,15 @@ Once the user has edited anything, register a `beforeunload` handler so an accid
 ```
 /index.html        single page, two tab panels
 /css/app.css       tokens as CSS custom properties
-/js/dates.js       pure functions: parse, format, addDays, addMonths, addYears, diffDays, weekday
-/js/format.js      output formatter (pure)
+/js/dates.js       pure functions: parse, format, addDays, addWeeks (calendar weeks), addMonths, addYears, diffDays, weekday
+/js/format.js      dose + output formatting, invalid count, 10x jump guard (pure)
 /js/app.js         state, rendering, event handling
-/fonts/            self-hosted Inter woff2
-/tests/            unit tests for dates.js and format.js (any lightweight runner or node:test)
+/fonts/inter.woff2 self-hosted Inter (variable, weights 400-700, latin)
+/tests/            node:test: unit tests for dates.js and format.js, jsdom smoke test
+/package.json      { "type": "module" }, npm test (jsdom is a devDependency)
 ```
 
-Keep state in one plain object and render from it. Pure date and formatting functions must have unit tests. Deploy via GitHub Pages (branch or Actions); no build output needed.
+Keep state in one plain object and render from it. Pure date and formatting functions must have unit tests. Source lives on a local Forgejo instance, mirrored to GitHub; GitHub Pages serves the site. No build output needed.
 
 ## 7. Acceptance examples
 
@@ -196,7 +202,3 @@ Titration (Startdatum `02.12.2026`, Abstände 7 and 7):
 ## 8. Out of scope
 Login, saving or sharing schedules, printing, drug databases, interaction or dose-range checks, holiday or working-day logic, other languages, mobile-first layout.
 
-## 9. Open points to confirm with the owner
-1. Should a medication that has reached all-zero keep printing `0-0-0-0` on later dates, or drop out / print "abgesetzt"?
-2. Default Abstand and doses of a newly inserted row (spec says Abstand 7, doses copied from the row above).
-3. Should Differenz show negative values or swap the dates if Bis is before Von?
