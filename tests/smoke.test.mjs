@@ -33,7 +33,14 @@ test('app smoke test', async () => {
   };
 
   // --- Initial state ---
-  assert(document.querySelectorAll('.step-row:not(.head)').length === 1, 'starts with one step row');
+  assert(document.querySelectorAll('.step-row:not(.head)').length === 3, 'starts with three step rows (start, first step, goal)');
+  assert(document.querySelector('.plus-btn') === null, 'no plus buttons while the ramp is on');
+  assert(document.querySelector('.step-row .cell.del .icon-btn') === null, 'no delete buttons while the ramp is on');
+  // ramp off, then trim back to one row so the rest of the flow starts from a single step
+  $('ramp-toggle').click();
+  [...document.querySelectorAll('.step-row:not(.head) .cell.del .icon-btn')].pop().click();
+  [...document.querySelectorAll('.step-row:not(.head) .cell.del .icon-btn')].pop().click();
+  assert(document.querySelectorAll('.step-row:not(.head)').length === 1, 'trimmed to one row');
   assert(document.querySelectorAll('#meds .med-card').length === 1, 'starts with one medication card');
   assert($('med-count').textContent === '1 von 4 Medikamenten', 'med counter 1 von 4');
   const startInput = $('#start-row .date-field input');

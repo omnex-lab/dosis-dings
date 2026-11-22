@@ -38,6 +38,11 @@
       <div class="card">
         <h2 class="card-title">Schritte</h2>
         <p class="hint">Schritt 1 startet am Startdatum. Der Abstand zählt in Tagen ab dem vorigen Schritt. Datum und Abstand hängen zusammen: Änderst du das Datum, passt sich der Abstand an, und umgekehrt.</p>
+        <label class="check" for="ramp-toggle">
+          <input type="checkbox" id="ramp-toggle" checked>
+          Bis zum Ziel automatisch weiter erhöhen
+        </label>
+        <p class="hint" id="ramp-hint">Der Plan hat dann drei Schritte: Start, erste Erhöhung und Ziel. Die Erhöhung von Schritt 1 zu 2 wird im gleichen Abstand wiederholt, bis das Ziel erreicht ist. Das Datum des Ziels wird berechnet. Um einzelne Schritte selbst anzulegen oder zu löschen, die Einstellung ausschalten.</p>
         <div class="table-wrap" id="steps-table"></div>
         <p class="hint jump-hints" id="jump-hints" hidden></p>
       </div>
@@ -53,6 +58,7 @@
         </div>
         <pre class="output" id="output" tabindex="0" title="Klicken zum Kopieren" aria-label="Ausgabe zum Einfügen, klicken zum Kopieren"></pre>
       </div>
+
     </section>
 
     <section class="panel hidden" id="panel-dates" role="tabpanel" aria-labelledby="tab-dates">

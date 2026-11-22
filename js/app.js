@@ -2,7 +2,7 @@
 // State lives in plain objects; rendering derives from it.
 
 import * as D from './dates.js';
-import { buildOutput, countInvalid, findJumps, normalizeDoseText, parseDose } from './format.js';
+import { buildOutput, expandRamp, findIndivisible, planRamp, countInvalid, findJumps, normalizeDoseText, parseDose } from './format.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -405,9 +405,11 @@ const t = {
   meds: [], // { id, name, mode: 'dosis'|'tabletten', unit, strength }
   steps: [], // { id, distance: number|undefined (step 1 has none) }
   cells: {}, // stepId -> medId -> [4 texts]
+  ramp: true, // last step is a goal reached by repeating the first increase
 };
 
 let stepDateFields = [];
+let stepDistInputs = [];
 
 function today() {
   return D.today();
@@ -418,11 +420,37 @@ function tomorrow() {
 
 function initTitration() {
   t.start = tomorrow();
-  t.steps.push({ id: nextId() }); // first step (addMed fills its dose cells)
+  // Three rows by default: start, first step, goal (addMed fills their dose cells).
+  t.steps.push({ id: nextId() }, { id: nextId(), distance: 7 }, { id: nextId(), distance: 7 });
   addMed({ name: '', mode: 'dosis', unit: '', strength: '' }, { silent: true });
   renderMeds();
   renderStartRow();
   renderTable();
+
+  $('ramp-toggle').addEventListener('change', (e) => {
+    if (e.target.checked) enableRamp();
+    else {
+      t.ramp = false;
+      renderTable();
+    }
+    markDirty();
+  });
+
+  // Number and date fields: select the whole value on focus so typing replaces it.
+  const AUTOSELECT = '.dose-input, .dist input, .count-input, .date-field input[type="text"]';
+  let justFocused = null;
+  document.addEventListener('focusin', (e) => {
+    if (e.target.matches && e.target.matches(AUTOSELECT)) {
+      e.target.select();
+      justFocused = e.target;
+    }
+  });
+  document.addEventListener('mouseup', (e) => {
+    if (e.target === justFocused) {
+      e.preventDefault(); // keep the selection made on focus
+      justFocused = null;
+    }
+  });
 
   $('add-med').addEventListener('click', () => {
     if (t.meds.length < 4) {
@@ -551,7 +579,8 @@ function updateStartSeg() {
 /* ---- Medications ---- */
 
 function addMed(init, { silent = false } = {}) {
-  const med = { id: nextId(), name: init.name, mode: init.mode, unit: init.unit, strength: init.strength };
+  // divisible: smallest fraction of a tablet that can be taken (1, 0.5, 0.25)
+  const med = { id: nextId(), name: init.name, mode: init.mode, unit: init.unit, strength: init.strength, divisible: 1 };
   t.meds.push(med);
   for (const step of t.steps) {
     (t.cells[step.id] ||= {})[med.id] = ['0', '0', '0', '0'];
@@ -571,6 +600,7 @@ function removeMed(medId) {
 function renderMeds() {
   const box = $('meds');
   box.innerHTML = '';
+  box.classList.toggle('multi', t.meds.length > 1);
 
   t.meds.forEach((med, i) => {
     const card = el('div', 'card med-card');
@@ -614,6 +644,7 @@ function renderMeds() {
       med.mode = m === 0 ? 'dosis' : 'tabletten';
       unitField.classList.toggle('hidden', med.mode !== 'dosis');
       strengthField.classList.toggle('hidden', med.mode !== 'tabletten');
+      divField.classList.toggle('hidden', med.mode !== 'tabletten');
       refresh();
       markDirty();
     }, `Eingabe Medikament ${i + 1}`);
@@ -653,7 +684,31 @@ function renderMeds() {
     });
     strengthField.append(strengthLabel, strengthInput, strengthHint);
 
-    fields.append(nameField, modeField, unitField, strengthField);
+    // Teilbarkeit (Tabletten mode): doses are checked against it
+    const divField = el('div', 'field');
+    if (med.mode !== 'tabletten') divField.classList.add('hidden');
+    const divGroup = el('div', 'radio-group');
+    divGroup.setAttribute('role', 'radiogroup');
+    divGroup.setAttribute('aria-label', `Teilbarkeit Medikament ${i + 1}`);
+    [['Ganz', 1], ['Hälften', 0.5], ['Viertel', 0.25]].forEach(([text, val]) => {
+      const lab = el('label', 'radio');
+      const r = el('input');
+      r.type = 'radio';
+      r.name = `div-${med.id}`;
+      r.checked = med.divisible === val;
+      r.addEventListener('change', () => {
+        med.divisible = val;
+        refresh();
+        markDirty();
+      });
+      lab.append(r, document.createTextNode(text));
+      divGroup.append(lab);
+    });
+    const divLabel = el('span', 'field-label', 'Teilbar in');
+    const divHint = el('p', 'hint', 'Dosen werden darauf geprüft');
+    divField.append(divLabel, divGroup, divHint);
+
+    fields.append(nameField, modeField, unitField, strengthField, divField);
     card.append(title, remove, fields);
     box.append(card);
   });
@@ -678,15 +733,37 @@ function computeDates() {
   if (!t.start) return null;
   const dates = [t.start];
   for (let i = 1; i < t.steps.length; i++) {
-    dates.push(D.addDays(dates[i - 1], t.steps[i].distance ?? 0));
+    dates.push(D.addDays(dates[i - 1], distanceOf(i)));
   }
   return dates;
+}
+
+/** The last step is the computed goal while the ramp is on (needs 3+ steps). */
+function rampControlled(i) {
+  return t.ramp && t.steps.length >= 3 && i === t.steps.length - 1;
+}
+
+function parsedCells(step) {
+  return t.meds.map((med) => {
+    const arr = t.cells[step.id] ? t.cells[step.id][med.id] : undefined;
+    return [0, 1, 2, 3].map((slot) => parseDose(arr ? arr[slot] : '0'));
+  });
+}
+
+function distanceOf(i) {
+  if (!rampControlled(i)) return t.steps[i].distance ?? 0;
+  const n = t.steps.length;
+  const interval = t.steps[n - 2].distance ?? 0;
+  const count = planRamp(parsedCells(t.steps[n - 3]), parsedCells(t.steps[n - 2]), parsedCells(t.steps[n - 1]));
+  return count * interval;
 }
 
 function renderTable() {
   const wrap = $('steps-table');
   wrap.innerHTML = '';
   stepDateFields = [];
+  stepDistInputs = [];
+  $('ramp-toggle').checked = t.ramp;
 
   // Header
   const head = el('div', 'step-row head');
@@ -712,7 +789,11 @@ function renderTable() {
     const row = el('div', 'step-row');
 
     const left = el('div', 'step-left');
-    left.append(el('div', 'cell nr', String(i + 1)));
+    const nrCell = el('div', 'cell nr', String(i + 1));
+    if (t.ramp && t.steps.length >= 3 && (i === 0 || i === t.steps.length - 1)) {
+      nrCell.append(el('span', 'nr-cap', i === 0 ? 'Start' : 'Ziel'));
+    }
+    left.append(nrCell);
 
     const distCell = el('div', 'cell dist');
     const dist = el('input');
@@ -723,6 +804,13 @@ function renderTable() {
       dist.value = '–';
       dist.disabled = true;
       dist.readOnly = true;
+      distCell.append(dist);
+    } else if (rampControlled(i)) {
+      dist.value = String(distanceOf(i));
+      dist.disabled = true;
+      dist.readOnly = true;
+      dist.title = 'Wird aus der Erhöhung berechnet';
+      stepDistInputs[i] = dist;
       distCell.append(dist);
     } else {
       dist.value = String(step.distance);
@@ -764,7 +852,7 @@ function renderTable() {
       value: dates ? dates[i] : null,
       compact: true,
       showWeekday: true,
-      disabled: i === 0,
+      disabled: i === 0 || rampControlled(i),
       ariaLabel: `Datum, Schritt ${i + 1}`,
       revertOnBlur: true,
       beforeDate: () => {
@@ -837,12 +925,14 @@ function renderTable() {
     del.innerHTML = TRASH_SVG;
     del.disabled = t.steps.length <= 1;
     del.addEventListener('click', () => deleteStep(i));
-    delCell.append(del);
+    if (!t.ramp) delCell.append(del);
     row.append(delCell);
 
     wrap.append(row);
 
-    // Plus row after every step (inserts below the step above it)
+    // Plus row after every step (inserts below the step above it). With the
+    // ramp on, the plan is fixed to Start / erste Erhöhung / Ziel.
+    if (t.ramp) return;
     const plusRow = el('div', 'plus-row');
     const sticky = el('div', 'plus-sticky');
     const plus = el('button', 'plus-btn');
@@ -874,6 +964,21 @@ function insertStep(afterIdx) {
   markDirty();
 }
 
+/** The ramp needs exactly three steps: Start, erste Erhöhung, Ziel. */
+function enableRamp() {
+  const snap = takeSnapshot();
+  const removed = Math.max(0, t.steps.length - 3);
+  t.ramp = true;
+  if (removed) {
+    // keep Start, erste Erhöhung and the last step (Ziel)
+    const drop = t.steps.splice(2, t.steps.length - 3);
+    for (const s of drop) delete t.cells[s.id];
+  }
+  while (t.steps.length < 3) insertStep(t.steps.length - 1);
+  renderTable();
+  if (removed) showDeleteToast(snap, `${removed} Schritt${removed === 1 ? '' : 'e'} entfernt`);
+}
+
 function deleteStep(idx) {
   const snap = takeSnapshot();
   const step = t.steps[idx];
@@ -895,6 +1000,7 @@ function takeSnapshot() {
     meds: t.meds,
     steps: t.steps,
     cells: t.cells,
+    ramp: t.ramp,
   });
 }
 
@@ -903,17 +1009,18 @@ function restoreSnapshot(snap) {
   t.meds = snap.meds;
   t.steps = snap.steps;
   t.cells = snap.cells;
+  t.ramp = snap.ramp;
   // Re-sync start field and rebuild
   if (startField) startField.set(t.start, { silent: true });
   renderMeds();
   renderTable();
 }
 
-function showDeleteToast(snap) {
+function showDeleteToast(snap, text = 'Schritt gelöscht') {
   undoSnapshot = snap;
   const toast = $('toast');
   toast.hidden = false;
-  $('toast-text').textContent = 'Schritt gelöscht';
+  $('toast-text').textContent = text;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, 6000);
 }
@@ -933,10 +1040,11 @@ function refresh() {
     t.steps.forEach((s, i) => {
       const f = stepDateFields[i];
       if (f && document.activeElement !== f.input) f.set(dates[i], { silent: true });
+      if (stepDistInputs[i]) stepDistInputs[i].value = String(distanceOf(i));
     });
   }
 
-  const medViews = t.meds.map((m) => ({ name: m.name, mode: m.mode, unit: m.unit, strength: m.strength }));
+  const medViews = t.meds.map((m) => ({ name: m.name, mode: m.mode, unit: m.unit, strength: m.strength, divisible: m.divisible }));
 
   if (dates) {
     const rows = t.steps.map((s, i) => ({
@@ -947,7 +1055,8 @@ function refresh() {
       }),
     }));
 
-    $('output').textContent = buildOutput(medViews, rows);
+    const outRows = t.ramp && rows.length >= 3 ? expandRamp(rows) : rows;
+    $('output').textContent = buildOutput(medViews, outRows);
 
     // Invalid = non-numeric dose cells plus missing medication names
     // (both print ? in the output).
@@ -958,14 +1067,18 @@ function refresh() {
     warn.hidden = invalid === 0;
 
     const jumps = findJumps(medViews, rows);
+    const indiv = findIndivisible(medViews, rows);
     const jump = $('jump-hints');
-    if (jumps.length) {
-      jump.textContent = jumps
-        .map(
-          (j) =>
-            `Prüfen: Schritt ${j.step}, ${t.meds[j.med].name.trim() || '?'} ${SLOTS[j.slot]} – Sprung ≥ 10× zum vorigen Schritt`
-        )
-        .join('  ·  ');
+    if (jumps.length || indiv.length) {
+      const nameOf = (j) => t.meds[j.med].name.trim() || '?';
+      jump.textContent = [
+        ...jumps.map(
+          (j) => `Prüfen: Schritt ${j.step}, ${nameOf(j)} ${SLOTS[j.slot]} – Sprung ≥ 10× zum vorigen Schritt`
+        ),
+        ...indiv.map(
+          (j) => `Prüfen: Schritt ${j.step}, ${nameOf(j)} ${SLOTS[j.slot]} – Dosis passt nicht zur Teilbarkeit`
+        ),
+      ].join('  ·  ');
       jump.hidden = false;
     } else {
       jump.hidden = true;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOutput, countInvalid, findJumps, parseDose, formatDose, normalizeDoseText } from '../js/format.js';
+import { buildOutput, expandRamp, planRamp, findIndivisible, countInvalid, findJumps, parseDose, formatDose, normalizeDoseText } from '../js/format.js';
 
 const d = (y, m, day) => ({ y, m, d: day });
 
@@ -135,4 +135,63 @@ test('findJumps: zero, invalid and < 10x are ignored', () => {
 test('findJumps: single row has no jumps', () => {
   const meds = [{ name: 'A', mode: 'dosis', unit: '', strength: '' }];
   assert.deepEqual(findJumps(meds, [{ date: d(2026, 12, 2), cells: [[50, 0, 0, 0]] }]), []);
+});
+
+const dd = (n, m = 12) => ({ y: 2026, m, d: n });
+const medOf = (extra = {}) => ({ name: 'Escitalopram', mode: 'dosis', unit: '', strength: '', ...extra });
+
+test('ramp: 5 mg, +5 after a week, goal 20 gives 5, 10, 15, 20 weekly', () => {
+  const rows = [
+    { date: dd(2), cells: [[5, 0, 0, 0]] },
+    { date: dd(9), cells: [[10, 0, 0, 0]] },
+    { date: dd(30), cells: [[20, 0, 0, 0]] }, // date is replaced by the generated steps
+  ];
+  assert.equal(planRamp(rows[0].cells, rows[1].cells, rows[2].cells), 2);
+  const out = expandRamp(rows);
+  assert.deepEqual(out.map((r) => [r.date.d, r.cells[0][0]]), [[2, 5], [9, 10], [16, 15], [23, 20]]);
+  assert.equal(
+    buildOutput([medOf()], out),
+    'ab 02.12.2026:\nEscitalopram 5mg-0-0-0\n\nab 09.12.2026:\nEscitalopram 10mg-0-0-0\n\nab 16.12.2026:\nEscitalopram 15mg-0-0-0\n\nab 23.12.2026:\nEscitalopram 20mg-0-0-0'
+  );
+});
+
+test('ramp: last step is smaller when the goal is not a multiple; 1 to 7 tablets daily', () => {
+  const rows = [
+    { date: dd(1), cells: [[5, 0, 0, 0]] },
+    { date: dd(8), cells: [[10, 0, 0, 0]] },
+    { date: dd(8), cells: [[22, 0, 0, 0]] },
+  ];
+  assert.deepEqual(expandRamp(rows).map((r) => r.cells[0][0]), [5, 10, 15, 20, 22]);
+  // 1 tablet on day 1, 2 on day 2, goal 7: one more tablet per day
+  const daily = [
+    { date: dd(1), cells: [[1, 0, 0, 0]] },
+    { date: dd(2), cells: [[2, 0, 0, 0]] },
+    { date: dd(3), cells: [[7, 0, 0, 0]] },
+  ];
+  assert.deepEqual(expandRamp(daily).map((r) => [r.date.d, r.cells[0][0]]), [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]]);
+});
+
+test('ramp: per slot, descending, edge cases', () => {
+  const rows = [
+    { date: dd(1), cells: [[100, 0, 50, 0]] },
+    { date: dd(8), cells: [[75, 0, 50, 0]] },
+    { date: dd(8), cells: [[25, 0, 25, 0]] },
+  ];
+  const out = expandRamp(rows);
+  assert.deepEqual(out.map((r) => r.cells[0]), [[100, 0, 50, 0], [75, 0, 50, 0], [50, 0, 50, 0], [25, 0, 25, 0]]);
+  // fewer than 3 rows, interval 0 or invalid cell: unchanged
+  assert.equal(expandRamp(rows.slice(0, 2)).length, 2);
+  const same = [{ date: dd(1), cells: [[1]] }, { date: dd(1), cells: [[2]] }, { date: dd(1), cells: [[9]] }];
+  assert.equal(expandRamp(same), same);
+  const bad = [{ date: dd(1), cells: [[1]] }, { date: dd(8), cells: [[null]] }, { date: dd(9), cells: [[9]] }];
+  assert.equal(expandRamp(bad), bad);
+});
+
+test('findIndivisible: flags doses that do not fit the tablet divisibility', () => {
+  const rows = [{ date: dd(1), cells: [[0.5, 1, 0, 0.25]] }];
+  const m = (divisible) => [{ name: 'T', mode: 'tabletten', divisible }];
+  assert.deepEqual(findIndivisible(m(1), rows).map((x) => x.slot), [0, 3]);
+  assert.deepEqual(findIndivisible(m(0.5), rows).map((x) => x.slot), [3]);
+  assert.deepEqual(findIndivisible(m(0.25), rows), []);
+  assert.deepEqual(findIndivisible([{ name: 'D', mode: 'dosis' }], rows), []);
 });

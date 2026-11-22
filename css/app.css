@@ -51,17 +51,15 @@ body {
 .site-header {
   background: var(--surface);
   border-bottom: 1px solid var(--card-border);
-  padding: 12px 32px;
-  max-width: 1180px;
+  padding: 16px max(32px, calc((100% - 1180px) / 2 + 32px)) 0;
   width: 100%;
-  margin: 0 auto;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 32px;
   flex-wrap: wrap;
 }
 
-.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; }
 
 .brand-name {
   font-size: 26px;
@@ -74,7 +72,7 @@ body {
   color: var(--text-muted);
 }
 
-.tab-bar { display: flex; gap: 8px; height: 100%; align-items: stretch; }
+.tab-bar { display: flex; gap: 8px; align-items: stretch; margin-bottom: -1px; }
 
 .tab {
   appearance: none;
@@ -109,6 +107,12 @@ body {
   flex: 1;
 }
 
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -141,7 +145,7 @@ body {
 
 /* ---------- Controls ---------- */
 
-label.field-label {
+.field-label {
   display: block;
   font-size: 13px;
   font-weight: 600;
@@ -338,12 +342,19 @@ button:focus-visible,
   align-items: flex-start;
   gap: 16px;
   flex-wrap: wrap;
-  margin-top: 12px;
+  margin: 12px 0;
 }
 
 /* ---------- Medication cards ---------- */
 
 #meds { display: flex; flex-direction: column; gap: 24px; }
+
+/* two or more medications: two per row */
+#meds.multi { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; }
+
+@media (max-width: 900px) {
+  #meds.multi { grid-template-columns: 1fr; }
+}
 
 .med-card { position: relative; }
 
@@ -362,7 +373,7 @@ button:focus-visible,
 
 .med-fields {
   display: flex;
-  gap: 24px;
+  gap: 16px 24px;
   flex-wrap: wrap;
   align-items: flex-start;
 }
@@ -371,11 +382,27 @@ button:focus-visible,
 
 .med-fields input[type="text"] { width: 220px; }
 
+.radio-group {
+  display: flex;
+  gap: 16px;
+  height: 44px;
+  align-items: center;
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.radio input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
 .meds-footer {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 16px;
 }
 
 /* ---------- Steps table ---------- */
@@ -422,7 +449,25 @@ button:focus-visible,
   padding: 8px 6px;
 }
 
-.cell.nr { width: 48px; min-width: 48px; }
+.cell.nr { width: 48px; min-width: 48px; flex-direction: column; gap: 2px; }
+
+.nr-cap {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-dark);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 
 .cell.dist { width: 70px; min-width: 70px; padding: 8px 2px; flex-direction: column; gap: 2px; }
 
@@ -443,6 +488,7 @@ button:focus-visible,
 .dose-area {
   display: flex;
   align-items: stretch;
+  padding: 0 16px;
 }
 
 .dose-group {
@@ -701,6 +747,7 @@ button:focus-visible,
 /* ---------- Narrow screens ---------- */
 
 @media (max-width: 700px) {
-  .site-header, .content { padding-left: 16px; padding-right: 16px; }
+  .site-header { padding-left: 16px; padding-right: 16px; }
+  .content { padding-left: 16px; padding-right: 16px; }
   .brand-tagline { display: none; }
 }
