@@ -43,7 +43,8 @@ body {
   flex-direction: column;
 }
 
-.hidden { display: none !important; }
+.hidden,
+[hidden] { display: none !important; }
 
 /* ---------- Header ---------- */
 
@@ -305,6 +306,7 @@ button:focus-visible,
 
 .date-field input { width: 150px; }
 
+.date-field.compact .date-field-row { gap: 4px; }
 .date-field.compact input { width: 104px; height: 40px; font-size: 14px; }
 
 .date-field .weekday {
@@ -422,16 +424,18 @@ button:focus-visible,
 
 .cell.nr { width: 48px; min-width: 48px; }
 
-.cell.dist { width: 116px; min-width: 116px; flex-direction: column; gap: 2px; }
+.cell.dist { width: 70px; min-width: 70px; padding: 8px 2px; flex-direction: column; gap: 2px; }
 
-.cell.date { width: 128px; min-width: 128px; flex-direction: column; gap: 2px; }
+.cell.date { width: 174px; min-width: 174px; padding: 8px 2px; flex-direction: column; gap: 2px; }
 
 .cell.date .date-field { justify-content: center; }
 
 .cell.del { width: 52px; min-width: 52px; }
 
 .dist input {
-  width: 90px;
+  width: 58px;
+  padding-left: 4px;
+  padding-right: 4px;
   text-align: center;
   height: 40px;
 }
